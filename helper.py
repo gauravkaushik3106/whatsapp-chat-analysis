@@ -4,11 +4,14 @@ import pandas as pd
 from collections import Counter
 import emoji
 
+# NEW: Sentiment
+from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+
 extract = URLExtract()
+analyzer = SentimentIntensityAnalyzer()
 
 # -------------------- FETCH STATS --------------------
 def fetch_stats(selected_user, df):
-
     if selected_user != 'Overall':
         df = df[df['user'] == selected_user]
 
@@ -38,15 +41,14 @@ def most_busy_users(df):
 
 # -------------------- WORDCLOUD --------------------
 def create_wordcloud(selected_user, df):
-
     with open('stop_hinglish.txt', 'r') as f:
         stop_words = f.read()
 
     if selected_user != 'Overall':
         df = df[df['user'] == selected_user]
 
-    temp = df[df['user'] != 'group_notification']
-    temp = temp[temp['message'] != '<Media omitted>\n']
+    temp = df[(df['user'] != 'group_notification') &
+              (df['message'] != '<Media omitted>\n')]
 
     def remove_stop_words(message):
         return " ".join(
@@ -62,21 +64,19 @@ def create_wordcloud(selected_user, df):
     )
 
     temp['message'] = temp['message'].apply(remove_stop_words)
-    df_wc = wc.generate(temp['message'].str.cat(sep=" "))
-    return df_wc
+    return wc.generate(temp['message'].str.cat(sep=" "))
 
 
 # -------------------- MOST COMMON WORDS --------------------
 def most_common_words(selected_user, df):
-
     with open('stop_hinglish.txt', 'r') as f:
         stop_words = f.read()
 
     if selected_user != 'Overall':
         df = df[df['user'] == selected_user]
 
-    temp = df[df['user'] != 'group_notification']
-    temp = temp[temp['message'] != '<Media omitted>\n']
+    temp = df[(df['user'] != 'group_notification') &
+              (df['message'] != '<Media omitted>\n')]
 
     words = []
     for message in temp['message']:
@@ -87,9 +87,8 @@ def most_common_words(selected_user, df):
     return pd.DataFrame(Counter(words).most_common(20))
 
 
-# -------------------- EMOJI HELPER (FIXED) --------------------
+# -------------------- EMOJI HELPER --------------------
 def emoji_helper(selected_user, df):
-
     if selected_user != 'Overall':
         df = df[df['user'] == selected_user]
 
@@ -100,61 +99,84 @@ def emoji_helper(selected_user, df):
     return pd.DataFrame(Counter(emojis).most_common())
 
 
-# -------------------- MONTHLY TIMELINE --------------------
+# -------------------- TIMELINES --------------------
 def monthly_timeline(selected_user, df):
-
     if selected_user != 'Overall':
         df = df[df['user'] == selected_user]
 
-    timeline = (
-        df.groupby(['year', 'month_num', 'month'])
-          .count()['message']
-          .reset_index()
-    )
+    timeline = df.groupby(['year', 'month_num', 'month']) \
+                 .count()['message'] \
+                 .reset_index()
 
     timeline['time'] = timeline['month'] + "-" + timeline['year'].astype(str)
     return timeline
 
 
-# -------------------- DAILY TIMELINE --------------------
 def daily_timeline(selected_user, df):
-
     if selected_user != 'Overall':
         df = df[df['user'] == selected_user]
 
     return df.groupby('only_date').count()['message'].reset_index()
 
 
-# -------------------- WEEK ACTIVITY MAP --------------------
+# -------------------- ACTIVITY MAPS --------------------
 def week_activity_map(selected_user, df):
-
     if selected_user != 'Overall':
         df = df[df['user'] == selected_user]
-
     return df['day_name'].value_counts()
 
 
-# -------------------- MONTH ACTIVITY MAP --------------------
 def month_activity_map(selected_user, df):
-
     if selected_user != 'Overall':
         df = df[df['user'] == selected_user]
-
     return df['month'].value_counts()
 
 
-# -------------------- ACTIVITY HEATMAP --------------------
 def activity_heatmap(selected_user, df):
-
     if selected_user != 'Overall':
         df = df[df['user'] == selected_user]
 
-    return (
-        df.pivot_table(
-            index='day_name',
-            columns='period',
-            values='message',
-            aggfunc='count'
-        )
-        .fillna(0)
+    return df.pivot_table(
+        index='day_name',
+        columns='period',
+        values='message',
+        aggfunc='count'
+    ).fillna(0)
+
+
+# ======================================================
+# 🔥 OPTION 3: CONVERSATION MOOD SHIFT DETECTION
+# ======================================================
+
+def get_sentiment_score(text):
+    return analyzer.polarity_scores(text)['compound']
+
+
+def hourly_sentiment(selected_user, df):
+    if selected_user != 'Overall':
+        df = df[df['user'] == selected_user]
+
+    df = df.copy()
+    df['sentiment'] = df['message'].apply(get_sentiment_score)
+    df['hour_block'] = df['date'].dt.floor('H')
+
+    hourly = df.groupby('hour_block')['sentiment'] \
+               .mean() \
+               .reset_index()
+
+    hourly['smooth_sentiment'] = hourly['sentiment'].rolling(3).mean()
+    hourly['delta'] = hourly['smooth_sentiment'].diff()
+
+    return hourly
+
+
+def detect_mood_shifts(hourly_df, threshold=0.4):
+    shifts = hourly_df[
+        hourly_df['delta'].abs() >= threshold
+    ].copy()
+
+    shifts['event'] = shifts['delta'].apply(
+        lambda x: 'Positive Shift 😊' if x > 0 else 'Negative Shift 😠'
     )
+
+    return shifts[['hour_block', 'delta', 'event']]
