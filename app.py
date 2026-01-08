@@ -11,7 +11,6 @@ uploaded_file = st.sidebar.file_uploader("Choose WhatsApp chat (.txt)")
 if uploaded_file is not None:
     bytes_data = uploaded_file.getvalue()
 
-    # WhatsApp Android exports are UTF-16
     try:
         data = bytes_data.decode("utf-16")
     except UnicodeDecodeError:
@@ -83,34 +82,12 @@ if uploaded_file is not None:
         sns.heatmap(heatmap, ax=ax)
         st.pyplot(fig)
 
-        # ---------- BUSY USERS ----------
-        if selected_user == "Overall":
-            st.title("Most Busy Users")
-            x, new_df = helper.most_busy_users(df)
-            col1, col2 = st.columns(2)
-
-            with col1:
-                fig, ax = plt.subplots()
-                ax.bar(x.index, x.values)
-                plt.xticks(rotation=90)
-                st.pyplot(fig)
-
-            with col2:
-                st.dataframe(new_df)
-
         # ---------- WORDCLOUD ----------
         st.title("Wordcloud")
         wc = helper.create_wordcloud(selected_user, df)
         fig, ax = plt.subplots()
         ax.imshow(wc)
         ax.axis("off")
-        st.pyplot(fig)
-
-        # ---------- MOST COMMON WORDS ----------
-        st.title("Most Common Words")
-        common = helper.most_common_words(selected_user, df)
-        fig, ax = plt.subplots()
-        ax.barh(common[0], common[1])
         st.pyplot(fig)
 
         # ---------- EMOJI ANALYSIS ----------
@@ -129,3 +106,24 @@ if uploaded_file is not None:
                 autopct="%0.2f"
             )
             st.pyplot(fig)
+
+        # ======================================================
+        # 🔥 CONVERSATION MOOD SHIFT DETECTION (OPTION 3)
+        # ======================================================
+        st.title("Conversation Mood Shifts")
+
+        hourly_df = helper.hourly_sentiment(selected_user, df)
+        mood_shifts = helper.detect_mood_shifts(hourly_df)
+
+        fig, ax = plt.subplots()
+        ax.plot(hourly_df['hour_block'], hourly_df['smooth_sentiment'], label='Mood Trend')
+        ax.axhline(0, linestyle='--', alpha=0.3)
+        plt.xticks(rotation=90)
+        ax.legend()
+        st.pyplot(fig)
+
+        if not mood_shifts.empty:
+            st.subheader("Detected Mood Shift Events")
+            st.dataframe(mood_shifts)
+        else:
+            st.info("No significant mood shifts detected.")
