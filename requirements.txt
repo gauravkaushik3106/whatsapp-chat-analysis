@@ -4,4 +4,6 @@ seaborn
 urlextract
 wordcloud
 pandas
+
 emoji
+vaderSentiment
