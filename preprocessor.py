@@ -2,29 +2,30 @@ import re
 import pandas as pd
 
 def preprocess(data):
-    # ✅ Robust pattern for Android + iOS + different locales
-    pattern = r'\d{1,2}[/-]\d{1,2}[/-]\d{2,4},\s\d{1,2}:\d{2}.*?-'
+    # ✅ EXACT pattern for your WhatsApp format
+    pattern = r'\d{2}/\d{2}/\d{2},\s\d{2}:\d{2}\s-\s'
 
     messages = re.split(pattern, data)[1:]
     dates = re.findall(pattern, data)
+
+    # Safety check
+    if len(messages) == 0 or len(dates) == 0:
+        return pd.DataFrame()
 
     df = pd.DataFrame({
         'user_message': messages,
         'date': dates
     })
 
-    # ✅ Robust datetime parsing
-    df['date'] = pd.to_datetime(df['date'], errors='coerce')
-
-    # ✅ DROP rows where date could not be parsed
+    # ✅ Robust datetime parsing (24-hour supported)
+    df['date'] = pd.to_datetime(df['date'], errors='coerce', dayfirst=True)
     df = df.dropna(subset=['date'])
 
-    # ---------------- USER & MESSAGE SPLIT ----------------
     users = []
     messages = []
 
     for message in df['user_message']:
-        entry = re.split(r'([\w\W]+?):\s', message, maxsplit=1)
+        entry = re.split(r'([^:]+):\s', message, maxsplit=1)
         if len(entry) > 2:
             users.append(entry[1])
             messages.append(entry[2])
@@ -36,7 +37,7 @@ def preprocess(data):
     df['message'] = messages
     df.drop(columns=['user_message'], inplace=True)
 
-    # ---------------- DATE FEATURES (CRITICAL FOR PLOTS) ----------------
+    # ✅ Date features (needed for all plots)
     df['only_date'] = df['date'].dt.date
     df['year'] = df['date'].dt.year
     df['month_num'] = df['date'].dt.month
@@ -46,13 +47,11 @@ def preprocess(data):
     df['hour'] = df['date'].dt.hour
     df['minute'] = df['date'].dt.minute
 
-    # ---------------- PERIOD (FOR HEATMAPS) ----------------
+    # ✅ Period column for heatmap
     period = []
     for hour in df['hour']:
         if hour == 23:
             period.append("23-00")
-        elif hour == 0:
-            period.append("00-01")
         else:
             period.append(f"{hour}-{hour + 1}")
 
