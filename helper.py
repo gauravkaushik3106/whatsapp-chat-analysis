@@ -4,13 +4,15 @@ import pandas as pd
 from collections import Counter
 import emoji
 
-# NEW: Sentiment
+# Sentiment
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
 extract = URLExtract()
 analyzer = SentimentIntensityAnalyzer()
 
-# -------------------- FETCH STATS --------------------
+# --------------------------------------------------
+# BASIC STATS
+# --------------------------------------------------
 def fetch_stats(selected_user, df):
     if selected_user != 'Overall':
         df = df[df['user'] == selected_user]
@@ -30,16 +32,23 @@ def fetch_stats(selected_user, df):
     return num_messages, len(words), num_media_messages, len(links)
 
 
-# -------------------- MOST BUSY USERS --------------------
+# --------------------------------------------------
+# MOST BUSY USERS
+# --------------------------------------------------
 def most_busy_users(df):
     x = df['user'].value_counts().head()
-    df = round((df['user'].value_counts() / df.shape[0]) * 100, 2) \
-        .reset_index() \
-        .rename(columns={'index': 'name', 'user': 'percent'})
-    return x, df
+
+    percent_df = (
+        df['user'].value_counts() / df.shape[0] * 100
+    ).round(2).reset_index()
+
+    percent_df.columns = ['name', 'percent']
+    return x, percent_df
 
 
-# -------------------- WORDCLOUD --------------------
+# --------------------------------------------------
+# WORDCLOUD
+# --------------------------------------------------
 def create_wordcloud(selected_user, df):
     with open('stop_hinglish.txt', 'r') as f:
         stop_words = f.read()
@@ -63,11 +72,15 @@ def create_wordcloud(selected_user, df):
         background_color='white'
     )
 
+    temp = temp.copy()
     temp['message'] = temp['message'].apply(remove_stop_words)
+
     return wc.generate(temp['message'].str.cat(sep=" "))
 
 
-# -------------------- MOST COMMON WORDS --------------------
+# --------------------------------------------------
+# MOST COMMON WORDS
+# --------------------------------------------------
 def most_common_words(selected_user, df):
     with open('stop_hinglish.txt', 'r') as f:
         stop_words = f.read()
@@ -87,7 +100,9 @@ def most_common_words(selected_user, df):
     return pd.DataFrame(Counter(words).most_common(20))
 
 
-# -------------------- EMOJI HELPER --------------------
+# --------------------------------------------------
+# EMOJI ANALYSIS (FIXED FOR NEW emoji LIBRARY)
+# --------------------------------------------------
 def emoji_helper(selected_user, df):
     if selected_user != 'Overall':
         df = df[df['user'] == selected_user]
@@ -99,14 +114,18 @@ def emoji_helper(selected_user, df):
     return pd.DataFrame(Counter(emojis).most_common())
 
 
-# -------------------- TIMELINES --------------------
+# --------------------------------------------------
+# TIMELINES
+# --------------------------------------------------
 def monthly_timeline(selected_user, df):
     if selected_user != 'Overall':
         df = df[df['user'] == selected_user]
 
-    timeline = df.groupby(['year', 'month_num', 'month']) \
-                 .count()['message'] \
-                 .reset_index()
+    timeline = (
+        df.groupby(['year', 'month_num', 'month'])
+          .count()['message']
+          .reset_index()
+    )
 
     timeline['time'] = timeline['month'] + "-" + timeline['year'].astype(str)
     return timeline
@@ -119,7 +138,9 @@ def daily_timeline(selected_user, df):
     return df.groupby('only_date').count()['message'].reset_index()
 
 
-# -------------------- ACTIVITY MAPS --------------------
+# --------------------------------------------------
+# ACTIVITY MAPS
+# --------------------------------------------------
 def week_activity_map(selected_user, df):
     if selected_user != 'Overall':
         df = df[df['user'] == selected_user]
@@ -144,9 +165,9 @@ def activity_heatmap(selected_user, df):
     ).fillna(0)
 
 
-# ======================================================
-# 🔥 OPTION 3: CONVERSATION MOOD SHIFT DETECTION
-# ======================================================
+# ==================================================
+# 🔥 SENTIMENT & MOOD SHIFT DETECTION (OPTION 3)
+# ==================================================
 
 def get_sentiment_score(text):
     return analyzer.polarity_scores(text)['compound']
@@ -160,9 +181,11 @@ def hourly_sentiment(selected_user, df):
     df['sentiment'] = df['message'].apply(get_sentiment_score)
     df['hour_block'] = df['date'].dt.floor('H')
 
-    hourly = df.groupby('hour_block')['sentiment'] \
-               .mean() \
-               .reset_index()
+    hourly = (
+        df.groupby('hour_block')['sentiment']
+          .mean()
+          .reset_index()
+    )
 
     hourly['smooth_sentiment'] = hourly['sentiment'].rolling(3).mean()
     hourly['delta'] = hourly['smooth_sentiment'].diff()
