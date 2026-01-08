@@ -2,42 +2,50 @@ import re
 import pandas as pd
 
 def preprocess(data):
-    # ✅ EXACT pattern for your WhatsApp format
+    # Normalize line endings
+    data = data.replace('\r\n', '\n')
+
+    # EXACT WhatsApp Android format (your file)
     pattern = r'\d{2}/\d{2}/\d{2},\s\d{2}:\d{2}\s-\s'
 
-    messages = re.split(pattern, data)[1:]
     dates = re.findall(pattern, data)
+    messages = re.split(pattern, data)[1:]
 
-    # Safety check
-    if len(messages) == 0 or len(dates) == 0:
+    # If parsing fails, return empty df safely
+    if len(dates) == 0 or len(messages) == 0:
         return pd.DataFrame()
 
     df = pd.DataFrame({
-        'user_message': messages,
-        'date': dates
+        'date': dates,
+        'user_message': messages
     })
 
-    # ✅ Robust datetime parsing (24-hour supported)
-    df['date'] = pd.to_datetime(df['date'], errors='coerce', dayfirst=True)
+    # Convert date (24-hour supported)
+    df['date'] = pd.to_datetime(
+        df['date'],
+        format='%d/%m/%y, %H:%M - ',
+        errors='coerce'
+    )
+
     df = df.dropna(subset=['date'])
 
     users = []
     messages = []
 
-    for message in df['user_message']:
-        entry = re.split(r'([^:]+):\s', message, maxsplit=1)
-        if len(entry) > 2:
-            users.append(entry[1])
-            messages.append(entry[2])
+    for msg in df['user_message']:
+        split = re.split(r':\s', msg, maxsplit=1)
+        if len(split) == 2:
+            users.append(split[0])
+            messages.append(split[1])
         else:
             users.append('group_notification')
-            messages.append(entry[0])
+            messages.append(msg)
 
     df['user'] = users
     df['message'] = messages
     df.drop(columns=['user_message'], inplace=True)
 
-    # ✅ Date features (needed for all plots)
+    # Date features (required by helper.py)
     df['only_date'] = df['date'].dt.date
     df['year'] = df['date'].dt.year
     df['month_num'] = df['date'].dt.month
@@ -47,14 +55,9 @@ def preprocess(data):
     df['hour'] = df['date'].dt.hour
     df['minute'] = df['date'].dt.minute
 
-    # ✅ Period column for heatmap
-    period = []
-    for hour in df['hour']:
-        if hour == 23:
-            period.append("23-00")
-        else:
-            period.append(f"{hour}-{hour + 1}")
-
-    df['period'] = period
+    # Period column for heatmap
+    df['period'] = df['hour'].apply(
+        lambda h: f"{h}-00" if h == 23 else f"{h}-{h+1}"
+    )
 
     return df
