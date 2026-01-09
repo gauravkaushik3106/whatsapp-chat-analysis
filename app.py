@@ -2,6 +2,7 @@ import streamlit as st
 import preprocessor, helper
 import matplotlib.pyplot as plt
 import seaborn as sns
+import numpy as np
 
 st.set_page_config(page_title="WhatsApp Chat Analyzer", layout="wide")
 st.sidebar.title("Whatsapp Chat Analyzer")
@@ -136,6 +137,16 @@ if uploaded_file is not None:
         st.title("Emotion Intensity & Conversation Events")
 
         emotion_df = helper.compute_emotion_intensity(selected_user, df)
+
+        # ---- Compute Z-score safely HERE ----
+        mean_intensity = emotion_df['emotion_intensity'].mean()
+        std_intensity = emotion_df['emotion_intensity'].std()
+
+        emotion_df['z_intensity'] = (
+            (emotion_df['emotion_intensity'] - mean_intensity)
+            / std_intensity
+        )
+
         events_df = helper.detect_emotional_events(emotion_df)
 
         # -------- Z-SCORE EMOTION INTENSITY PLOT --------
