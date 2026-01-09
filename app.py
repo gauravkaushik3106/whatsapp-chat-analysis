@@ -23,8 +23,9 @@ if uploaded_file is not None:
 
     df = preprocessor.preprocess(data)
 
-    if df.empty:
-        st.error("Invalid WhatsApp chat format or empty chat file.")
+    # ✅ ONLY reject truly empty parses
+    if df.shape[0] == 0:
+        st.error("Chat file has no readable messages.")
         st.stop()
 
     # --------------------------------------------------
@@ -56,22 +57,24 @@ if uploaded_file is not None:
         # ==================================================
         # MONTHLY TIMELINE
         # ==================================================
-        st.title("Monthly Timeline")
-        timeline = helper.monthly_timeline(selected_user, df)
-        fig, ax = plt.subplots()
-        ax.plot(timeline['time'], timeline['message'])
-        plt.xticks(rotation=90)
-        st.pyplot(fig)
+        if df.shape[0] >= 5:
+            st.title("Monthly Timeline")
+            timeline = helper.monthly_timeline(selected_user, df)
+            fig, ax = plt.subplots()
+            ax.plot(timeline['time'], timeline['message'])
+            plt.xticks(rotation=90)
+            st.pyplot(fig)
 
         # ==================================================
         # DAILY TIMELINE
         # ==================================================
-        st.title("Daily Timeline")
-        daily = helper.daily_timeline(selected_user, df)
-        fig, ax = plt.subplots()
-        ax.plot(daily['only_date'], daily['message'])
-        plt.xticks(rotation=90)
-        st.pyplot(fig)
+        if df.shape[0] >= 5:
+            st.title("Daily Timeline")
+            daily = helper.daily_timeline(selected_user, df)
+            fig, ax = plt.subplots()
+            ax.plot(daily['only_date'], daily['message'])
+            plt.xticks(rotation=90)
+            st.pyplot(fig)
 
         # ==================================================
         # ACTIVITY MAP
@@ -96,11 +99,12 @@ if uploaded_file is not None:
         # ==================================================
         # WEEKLY HEATMAP
         # ==================================================
-        st.title("Weekly Activity Map")
-        heatmap = helper.activity_heatmap(selected_user, df)
-        fig, ax = plt.subplots()
-        sns.heatmap(heatmap, ax=ax)
-        st.pyplot(fig)
+        if df.shape[0] >= 10:
+            st.title("Weekly Activity Map")
+            heatmap = helper.activity_heatmap(selected_user, df)
+            fig, ax = plt.subplots()
+            sns.heatmap(heatmap, ax=ax)
+            st.pyplot(fig)
 
         # ==================================================
         # WORDCLOUD
@@ -118,94 +122,102 @@ if uploaded_file is not None:
         st.title("Emoji Analysis")
         emoji_df = helper.emoji_helper(selected_user, df)
 
-        col1, col2 = st.columns(2)
-        with col1:
-            st.dataframe(emoji_df)
+        if not emoji_df.empty:
+            col1, col2 = st.columns(2)
+            with col1:
+                st.dataframe(emoji_df)
 
-        with col2:
-            fig, ax = plt.subplots()
-            ax.pie(
-                emoji_df[1].head(),
-                labels=emoji_df[0].head(),
-                autopct="%0.2f"
-            )
-            st.pyplot(fig)
+            with col2:
+                fig, ax = plt.subplots()
+                ax.pie(
+                    emoji_df[1].head(),
+                    labels=emoji_df[0].head(),
+                    autopct="%0.2f"
+                )
+                st.pyplot(fig)
+        else:
+            st.info("No emojis found in this chat.")
 
         # ==================================================
-        # 🔥 EMOTION INTENSITY & CONVERSATION EVENTS
+        # 🔥 EMOTION INTENSITY & EVENTS (SAFE + MEANINGFUL)
         # ==================================================
         st.title("Emotion Intensity & Conversation Events")
 
-        emotion_df = helper.compute_emotion_intensity(selected_user, df)
-
-        # ---- Z-score normalization ----
-        mean_intensity = emotion_df['emotion_intensity'].mean()
-        std_intensity = emotion_df['emotion_intensity'].std()
-
-        emotion_df['z_intensity'] = (
-            (emotion_df['emotion_intensity'] - mean_intensity) / std_intensity
-        )
-
-        # Smooth for visualization
-        emotion_df['z_smooth'] = emotion_df['z_intensity'].rolling(12).mean()
-
-        events_df = helper.detect_emotional_events(emotion_df)
-
-        # --------------------------------------------------
-        # IMPROVED EMOTION GRAPH
-        # --------------------------------------------------
-        fig, ax = plt.subplots(figsize=(12, 4))
-
-        # Smoothed trend
-        ax.plot(
-            emotion_df['hour_block'],
-            emotion_df['z_smooth'],
-            color='black',
-            linewidth=1.5,
-            label='Smoothed Emotion Deviation'
-        )
-
-        # Thresholds
-        ax.axhline(2, color='red', linestyle='--', alpha=0.6, label='High Emotional Event')
-        ax.axhline(-2, color='green', linestyle='--', alpha=0.6, label='Low Emotional Phase')
-
-        # Event markers only
-        if not events_df.empty:
-            colors = events_df['event_type'].apply(
-                lambda x: 'red' if 'Negative' in x else 'green'
+        # ✅ Guard: small chats cannot support time-series analytics
+        if df.shape[0] < 10:
+            st.warning(
+                "Chat is too small for emotion intensity analysis. "
+                "Add more messages to detect emotional patterns."
             )
-
-            sizes = events_df['message_count'] * 8
-
-            ax.scatter(
-                events_df['hour_block'],
-                (events_df['emotion_intensity'] - mean_intensity) / std_intensity,
-                c=colors,
-                s=sizes,
-                alpha=0.7,
-                label='Detected Events'
-            )
-
-        ax.set_title("Conversation Emotion Dynamics")
-        ax.set_ylabel("Emotion Deviation (Z-score)")
-        ax.set_xlabel("Time")
-        ax.legend()
-        plt.xticks(rotation=90)
-        st.pyplot(fig)
-
-        # --------------------------------------------------
-        # READABLE EVENTS TABLE (BLACK TEXT)
-        # --------------------------------------------------
-        st.subheader("Detected Emotional Events")
-
-        def highlight_events(row):
-            if "Negative" in row["event_type"]:
-                return ["background-color: #ffe6e6; color: black"] * len(row)
-            else:
-                return ["background-color: #e6ffe6; color: black"] * len(row)
-
-        if not events_df.empty:
-            styled_df = events_df.style.apply(highlight_events, axis=1)
-            st.dataframe(styled_df, use_container_width=True)
         else:
-            st.info("No statistically significant emotional events detected.")
+            emotion_df = helper.compute_emotion_intensity(selected_user, df)
+
+            # Remove NaN rows created by diff()
+            emotion_df = emotion_df.dropna(subset=['emotion_intensity'])
+
+            # Z-score normalization
+            mean_intensity = emotion_df['emotion_intensity'].mean()
+            std_intensity = emotion_df['emotion_intensity'].std()
+
+            # Guard against zero variance
+            if std_intensity == 0 or np.isnan(std_intensity):
+                st.info("Not enough emotional variation to compute intensity.")
+            else:
+                emotion_df['z_intensity'] = (
+                    (emotion_df['emotion_intensity'] - mean_intensity)
+                    / std_intensity
+                )
+
+                emotion_df['z_smooth'] = emotion_df['z_intensity'].rolling(12).mean()
+                events_df = helper.detect_emotional_events(emotion_df)
+
+                # ----------------- GRAPH -----------------
+                fig, ax = plt.subplots(figsize=(12, 4))
+
+                ax.plot(
+                    emotion_df['hour_block'],
+                    emotion_df['z_smooth'],
+                    color='black',
+                    linewidth=1.5,
+                    label='Smoothed Emotion Deviation'
+                )
+
+                ax.axhline(2, color='red', linestyle='--', alpha=0.6)
+                ax.axhline(-2, color='green', linestyle='--', alpha=0.6)
+
+                if not events_df.empty:
+                    colors = events_df['event_type'].apply(
+                        lambda x: 'red' if 'Negative' in x else 'green'
+                    )
+                    sizes = events_df['message_count'] * 8
+
+                    ax.scatter(
+                        events_df['hour_block'],
+                        (events_df['emotion_intensity'] - mean_intensity) / std_intensity,
+                        c=colors,
+                        s=sizes,
+                        alpha=0.7,
+                        label='Detected Events'
+                    )
+
+                ax.set_title("Conversation Emotion Dynamics")
+                ax.set_ylabel("Emotion Deviation (Z-score)")
+                ax.set_xlabel("Time")
+                ax.legend()
+                plt.xticks(rotation=90)
+                st.pyplot(fig)
+
+                # ----------------- TABLE -----------------
+                st.subheader("Detected Emotional Events")
+
+                def highlight_events(row):
+                    if "Negative" in row["event_type"]:
+                        return ["background-color: #ffe6e6; color: black"] * len(row)
+                    else:
+                        return ["background-color: #e6ffe6; color: black"] * len(row)
+
+                if not events_df.empty:
+                    styled_df = events_df.style.apply(highlight_events, axis=1)
+                    st.dataframe(styled_df, use_container_width=True)
+                else:
+                    st.info("No statistically significant emotional events detected.")
