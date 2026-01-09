@@ -115,6 +115,7 @@ if uploaded_file is not None:
         hourly_df = helper.hourly_sentiment(selected_user, df)
         mood_shifts = helper.detect_mood_shifts(hourly_df)
 
+
         fig, ax = plt.subplots()
         ax.plot(hourly_df['hour_block'], hourly_df['smooth_sentiment'], label='Mood Trend')
         ax.axhline(0, linestyle='--', alpha=0.3)
@@ -127,3 +128,4 @@ if uploaded_file is not None:
             st.dataframe(mood_shifts)
         else:
             st.info("No significant mood shifts detected.")
+
