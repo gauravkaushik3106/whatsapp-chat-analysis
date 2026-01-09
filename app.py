@@ -11,6 +11,7 @@ uploaded_file = st.sidebar.file_uploader("Choose WhatsApp chat (.txt)")
 if uploaded_file is not None:
     bytes_data = uploaded_file.getvalue()
 
+    # WhatsApp Android exports are usually UTF-16
     try:
         data = bytes_data.decode("utf-16")
     except UnicodeDecodeError:
@@ -22,6 +23,7 @@ if uploaded_file is not None:
         st.error("Invalid WhatsApp chat format or empty chat file.")
         st.stop()
 
+    # User selection
     user_list = df['user'].unique().tolist()
     if 'group_notification' in user_list:
         user_list.remove('group_notification')
@@ -32,8 +34,12 @@ if uploaded_file is not None:
 
     if st.sidebar.button("Show Analysis"):
 
-        # ---------- TOP STATS ----------
-        num_messages, words, num_media_messages, num_links = helper.fetch_stats(selected_user, df)
+        # ==================================================
+        # TOP STATS
+        # ==================================================
+        num_messages, words, num_media_messages, num_links = helper.fetch_stats(
+            selected_user, df
+        )
 
         col1, col2, col3, col4 = st.columns(4)
         col1.metric("Messages", num_messages)
@@ -41,7 +47,9 @@ if uploaded_file is not None:
         col3.metric("Media", num_media_messages)
         col4.metric("Links", num_links)
 
-        # ---------- MONTHLY TIMELINE ----------
+        # ==================================================
+        # MONTHLY TIMELINE
+        # ==================================================
         st.title("Monthly Timeline")
         timeline = helper.monthly_timeline(selected_user, df)
         fig, ax = plt.subplots()
@@ -49,7 +57,9 @@ if uploaded_file is not None:
         plt.xticks(rotation=90)
         st.pyplot(fig)
 
-        # ---------- DAILY TIMELINE ----------
+        # ==================================================
+        # DAILY TIMELINE
+        # ==================================================
         st.title("Daily Timeline")
         daily = helper.daily_timeline(selected_user, df)
         fig, ax = plt.subplots()
@@ -57,7 +67,9 @@ if uploaded_file is not None:
         plt.xticks(rotation=90)
         st.pyplot(fig)
 
-        # ---------- ACTIVITY MAP ----------
+        # ==================================================
+        # ACTIVITY MAP
+        # ==================================================
         st.title("Activity Map")
         col1, col2 = st.columns(2)
 
@@ -75,14 +87,18 @@ if uploaded_file is not None:
             plt.xticks(rotation=90)
             st.pyplot(fig)
 
-        # ---------- WEEKLY HEATMAP ----------
+        # ==================================================
+        # WEEKLY HEATMAP
+        # ==================================================
         st.title("Weekly Activity Map")
         heatmap = helper.activity_heatmap(selected_user, df)
         fig, ax = plt.subplots()
         sns.heatmap(heatmap, ax=ax)
         st.pyplot(fig)
 
-        # ---------- WORDCLOUD ----------
+        # ==================================================
+        # WORDCLOUD
+        # ==================================================
         st.title("Wordcloud")
         wc = helper.create_wordcloud(selected_user, df)
         fig, ax = plt.subplots()
@@ -90,11 +106,13 @@ if uploaded_file is not None:
         ax.axis("off")
         st.pyplot(fig)
 
-        # ---------- EMOJI ANALYSIS ----------
+        # ==================================================
+        # EMOJI ANALYSIS
+        # ==================================================
         st.title("Emoji Analysis")
         emoji_df = helper.emoji_helper(selected_user, df)
-        col1, col2 = st.columns(2)
 
+        col1, col2 = st.columns(2)
         with col1:
             st.dataframe(emoji_df)
 
@@ -107,25 +125,31 @@ if uploaded_file is not None:
             )
             st.pyplot(fig)
 
-        # ======================================================
-        # 🔥 CONVERSATION MOOD SHIFT DETECTION (OPTION 3)
-        # ======================================================
-        st.title("Conversation Mood Shifts")
+        # ==================================================
+        # 🔥 EMOTION INTENSITY ANALYSIS (IDEA 1)
+        # ==================================================
+        st.title("Emotion Intensity & Conversation Events")
 
-        hourly_df = helper.hourly_sentiment(selected_user, df)
-        mood_shifts = helper.detect_mood_shifts(hourly_df)
+        emotion_df = helper.compute_emotion_intensity(selected_user, df)
+        events_df = helper.detect_emotional_events(emotion_df)
 
-
+        # ---- Emotion Intensity Plot ----
         fig, ax = plt.subplots()
-        ax.plot(hourly_df['hour_block'], hourly_df['smooth_sentiment'], label='Mood Trend')
-        ax.axhline(0, linestyle='--', alpha=0.3)
+        ax.plot(
+            emotion_df['hour_block'],
+            emotion_df['emotion_intensity'],
+            label="Emotion Intensity",
+            color="purple"
+        )
         plt.xticks(rotation=90)
+        ax.set_ylabel("Intensity Score")
+        ax.set_xlabel("Time")
         ax.legend()
         st.pyplot(fig)
 
-        if not mood_shifts.empty:
-            st.subheader("Detected Mood Shift Events")
-            st.dataframe(mood_shifts)
+        # ---- Detected Events Table ----
+        if not events_df.empty:
+            st.subheader("Detected Emotional Events")
+            st.dataframe(events_df)
         else:
-            st.info("No significant mood shifts detected.")
-
+            st.info("No strong emotional events detected.")
