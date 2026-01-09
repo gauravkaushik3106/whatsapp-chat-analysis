@@ -2,13 +2,11 @@ import re
 import pandas as pd
 
 def preprocess(data):
-    # Robust WhatsApp date-time pattern
     pattern = r'\d{1,2}/\d{1,2}/\d{2},\s\d{1,2}:\d{2}\s-\s'
 
     messages = re.split(pattern, data)
     dates = re.findall(pattern, data)
 
-    # If no valid messages found
     if len(dates) == 0:
         return pd.DataFrame()
 
@@ -17,7 +15,6 @@ def preprocess(data):
         'date': dates
     })
 
-    # Convert date
     df['date'] = pd.to_datetime(
         df['date'],
         format='%d/%m/%y, %H:%M - ',
@@ -30,15 +27,16 @@ def preprocess(data):
     texts = []
 
     for message in df['message']:
-        # Split user and message
-        entry = re.split(r'([^:]+):\s', message, maxsplit=1)
+        message = message.strip()
 
-        if len(entry) > 2:
-            users.append(entry[1])
-            texts.append(entry[2].strip())
+        # SAFE split (handles emoji usernames)
+        if ": " in message:
+            user, text = message.split(": ", 1)
+            users.append(user)
+            texts.append(text)
         else:
-            users.append('group_notification')
-            texts.append(message.strip())
+            users.append("group_notification")
+            texts.append(message)
 
     df['user'] = users
     df['message'] = texts
