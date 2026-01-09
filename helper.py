@@ -3,6 +3,7 @@ from wordcloud import WordCloud
 import pandas as pd
 from collections import Counter
 import emoji
+import numpy as np
 
 # Sentiment
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
@@ -101,7 +102,7 @@ def most_common_words(selected_user, df):
 
 
 # --------------------------------------------------
-# EMOJI ANALYSIS (FIXED FOR NEW emoji LIBRARY)
+# EMOJI ANALYSIS
 # --------------------------------------------------
 def emoji_helper(selected_user, df):
     if selected_user != 'Overall':
@@ -166,40 +167,65 @@ def activity_heatmap(selected_user, df):
 
 
 # ==================================================
-# 🔥 SENTIMENT & MOOD SHIFT DETECTION (OPTION 3)
+# 🔥 EMOTION INTENSITY MODEL (IDEA 1 – FINAL)
 # ==================================================
 
-def get_sentiment_score(text):
-    return analyzer.polarity_scores(text)['compound']
+def compute_emotion_intensity(selected_user, df):
+    """
+    Returns hourly emotion intensity scores
+    """
 
-
-def hourly_sentiment(selected_user, df):
     if selected_user != 'Overall':
         df = df[df['user'] == selected_user]
 
     df = df.copy()
-    df['sentiment'] = df['message'].apply(get_sentiment_score)
+
+    # Sentiment per message
+    df['sentiment'] = df['message'].apply(
+        lambda x: analyzer.polarity_scores(x)['compound']
+    )
+
+    # Hourly bucket
     df['hour_block'] = df['date'].dt.floor('H')
 
-    hourly = (
-        df.groupby('hour_block')['sentiment']
-          .mean()
-          .reset_index()
+    grouped = df.groupby('hour_block').agg(
+        avg_sentiment=('sentiment', 'mean'),
+        message_count=('message', 'count'),
+        unique_users=('user', 'nunique')
+    ).reset_index()
+
+    # Sentiment change
+    grouped['sentiment_delta'] = grouped['avg_sentiment'].diff()
+
+    # Emotion intensity score
+    grouped['emotion_intensity'] = (
+        grouped['sentiment_delta'].abs()
+        * np.log1p(grouped['message_count'])
+        * grouped['unique_users']
     )
 
-    hourly['smooth_sentiment'] = hourly['sentiment'].rolling(3).mean()
-    hourly['delta'] = hourly['smooth_sentiment'].diff()
-
-    return hourly
+    return grouped
 
 
-def detect_mood_shifts(hourly_df, threshold=0.4):
-    shifts = hourly_df[
-        hourly_df['delta'].abs() >= threshold
+def detect_emotional_events(emotion_df, top_percentile=95):
+    """
+    Detect top emotional events based on intensity
+    """
+
+    threshold = np.percentile(
+        emotion_df['emotion_intensity'].dropna(),
+        top_percentile
+    )
+
+    events = emotion_df[
+        emotion_df['emotion_intensity'] >= threshold
     ].copy()
 
-    shifts['event'] = shifts['delta'].apply(
-        lambda x: 'Positive Shift 😊' if x > 0 else 'Negative Shift 😠'
+    events['event_type'] = events['sentiment_delta'].apply(
+        lambda x: 'Positive Surge 😊' if x > 0 else 'Negative Surge 😠'
     )
 
-    return shifts[['hour_block', 'delta', 'event']]
+    return events[
+        ['hour_block', 'emotion_intensity',
+         'message_count', 'unique_users', 'event_type']
+    ]
