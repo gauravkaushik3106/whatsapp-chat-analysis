@@ -6,6 +6,9 @@ import seaborn as sns
 st.set_page_config(page_title="WhatsApp Chat Analyzer", layout="wide")
 st.sidebar.title("Whatsapp Chat Analyzer")
 
+# -----------------------------------------------
+# FILE UPLOAD
+# -----------------------------------------------
 uploaded_file = st.sidebar.file_uploader("Choose WhatsApp chat (.txt)")
 
 if uploaded_file is not None:
@@ -23,7 +26,9 @@ if uploaded_file is not None:
         st.error("Invalid WhatsApp chat format or empty chat file.")
         st.stop()
 
-    # User selection
+    # -----------------------------------------------
+    # USER SELECTION
+    # -----------------------------------------------
     user_list = df['user'].unique().tolist()
     if 'group_notification' in user_list:
         user_list.remove('group_notification')
@@ -34,9 +39,9 @@ if uploaded_file is not None:
 
     if st.sidebar.button("Show Analysis"):
 
-        # ==================================================
-        # TOP STATS
-        # ==================================================
+        # ===============================================
+        # TOP STATISTICS
+        # ===============================================
         num_messages, words, num_media_messages, num_links = helper.fetch_stats(
             selected_user, df
         )
@@ -47,9 +52,9 @@ if uploaded_file is not None:
         col3.metric("Media", num_media_messages)
         col4.metric("Links", num_links)
 
-        # ==================================================
+        # ===============================================
         # MONTHLY TIMELINE
-        # ==================================================
+        # ===============================================
         st.title("Monthly Timeline")
         timeline = helper.monthly_timeline(selected_user, df)
         fig, ax = plt.subplots()
@@ -57,9 +62,9 @@ if uploaded_file is not None:
         plt.xticks(rotation=90)
         st.pyplot(fig)
 
-        # ==================================================
+        # ===============================================
         # DAILY TIMELINE
-        # ==================================================
+        # ===============================================
         st.title("Daily Timeline")
         daily = helper.daily_timeline(selected_user, df)
         fig, ax = plt.subplots()
@@ -67,9 +72,9 @@ if uploaded_file is not None:
         plt.xticks(rotation=90)
         st.pyplot(fig)
 
-        # ==================================================
+        # ===============================================
         # ACTIVITY MAP
-        # ==================================================
+        # ===============================================
         st.title("Activity Map")
         col1, col2 = st.columns(2)
 
@@ -87,18 +92,18 @@ if uploaded_file is not None:
             plt.xticks(rotation=90)
             st.pyplot(fig)
 
-        # ==================================================
+        # ===============================================
         # WEEKLY HEATMAP
-        # ==================================================
+        # ===============================================
         st.title("Weekly Activity Map")
         heatmap = helper.activity_heatmap(selected_user, df)
         fig, ax = plt.subplots()
         sns.heatmap(heatmap, ax=ax)
         st.pyplot(fig)
 
-        # ==================================================
+        # ===============================================
         # WORDCLOUD
-        # ==================================================
+        # ===============================================
         st.title("Wordcloud")
         wc = helper.create_wordcloud(selected_user, df)
         fig, ax = plt.subplots()
@@ -106,9 +111,9 @@ if uploaded_file is not None:
         ax.axis("off")
         st.pyplot(fig)
 
-        # ==================================================
+        # ===============================================
         # EMOJI ANALYSIS
-        # ==================================================
+        # ===============================================
         st.title("Emoji Analysis")
         emoji_df = helper.emoji_helper(selected_user, df)
 
@@ -126,30 +131,42 @@ if uploaded_file is not None:
             st.pyplot(fig)
 
         # ==================================================
-        # 🔥 EMOTION INTENSITY ANALYSIS (IDEA 1)
+        # 🔥 EMOTION INTENSITY & CONVERSATION EVENTS (FINAL)
         # ==================================================
         st.title("Emotion Intensity & Conversation Events")
 
         emotion_df = helper.compute_emotion_intensity(selected_user, df)
         events_df = helper.detect_emotional_events(emotion_df)
 
-        # ---- Emotion Intensity Plot ----
-        fig, ax = plt.subplots()
+        # -------- Z-SCORE EMOTION INTENSITY PLOT --------
+        fig, ax = plt.subplots(figsize=(10, 4))
         ax.plot(
             emotion_df['hour_block'],
-            emotion_df['emotion_intensity'],
-            label="Emotion Intensity",
-            color="purple"
+            emotion_df['z_intensity'],
+            color='black',
+            label='Emotion Deviation (Z-score)'
         )
-        plt.xticks(rotation=90)
-        ax.set_ylabel("Intensity Score")
+
+        ax.axhline(2, color='red', linestyle='--', alpha=0.5, label='High Emotional Event')
+        ax.axhline(-2, color='green', linestyle='--', alpha=0.5, label='Low Emotional Phase')
+
         ax.set_xlabel("Time")
+        ax.set_ylabel("Z-score Intensity")
         ax.legend()
+        plt.xticks(rotation=90)
         st.pyplot(fig)
 
-        # ---- Detected Events Table ----
+        # -------- COLORED EVENTS TABLE --------
+        st.subheader("Detected Emotional Events")
+
+        def highlight_events(row):
+            if "Negative" in row["event_type"]:
+                return ["background-color: #ffcccc"] * len(row)
+            else:
+                return ["background-color: #ccffcc"] * len(row)
+
         if not events_df.empty:
-            st.subheader("Detected Emotional Events")
-            st.dataframe(events_df)
+            styled_df = events_df.style.apply(highlight_events, axis=1)
+            st.dataframe(styled_df, use_container_width=True)
         else:
-            st.info("No strong emotional events detected.")
+            st.info("No statistically significant emotional events detected.")
